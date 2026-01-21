@@ -1,0 +1,22 @@
+{
+  "name": "research-spec-implement",
+  "description": "TDD workflow with QC gates: research (explore & decompose) → spec (requirements & checklist) → implement (test-first with review agents)",
+  "version": "1.0.0",
+  "author": {
+    "name": "Benji Bizzell",
+    "github": "benji-bizzell"
+  },
+  "repository": {
+    "type": "github",
+    "url": "https://github.com/benji-bizzell/Workflow"
+  },
+  "keywords": [
+    "tdd",
+    "workflow",
+    "research",
+    "spec",
+    "implement",
+    "code-review",
+    "quality-gates"
+  ]
+}

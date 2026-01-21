@@ -1,0 +1,14 @@
+{
+  "enabledPlugins": {
+    "pr-review-toolkit@anthropic": true
+  },
+  "extraKnownMarketplaces": {
+    "anthropic": {
+      "source": {
+        "source": "github",
+        "repo": "anthropics/claude-code",
+        "path": "plugins"
+      }
+    }
+  }
+}
