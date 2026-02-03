@@ -56,6 +56,9 @@ QC Validation (research-qc agent)
 Commit to main
        │
        ▼
+Create Spec Tasks
+       │
+       ▼
 Output: Research complete, ready for spec
 ```
 
@@ -351,11 +354,22 @@ Which decomposition makes more sense?"
 
 ### Document Each Spec Unit:
 
-For each decomposed piece, note:
-- Name and brief description
-- What it includes
-- Dependencies (other specs it needs)
-- Estimated complexity (S/M/L)
+For each decomposed piece, create a dependency-aware table:
+
+| Spec | Description | Blocks | Blocked By | Complexity |
+|------|-------------|--------|------------|------------|
+| 01-foundation | Core types and interfaces | 02, 03 | - | M |
+| 02-data-layer | API integration | 03 | 01 | M |
+| 03-ui | Component implementation | - | 01, 02 | L |
+
+**Column definitions:**
+- **Spec**: Numbered identifier (NN-name format)
+- **Description**: Brief summary of what the spec covers
+- **Blocks**: Which specs depend on this one (enables parallel execution planning)
+- **Blocked By**: Which specs must complete before this one can start
+- **Complexity**: S (small), M (medium), L (large)
+
+This table enables Task-based parallel execution after research completes.
 
 ### Coverage Verification
 
@@ -377,6 +391,7 @@ For each "Deferred to X" in Out of Scope:
 - [ ] No ⚠️ Unassigned items remain in Out of Scope
 - [ ] Each spec has 3-5 FRs (max 8) for reasonable PR size
 - [ ] Each spec is independently mergeable (no dangling dependencies)
+- [ ] Dependency graph has no cycles (validate Blocks/Blocked By columns)
 
 ---
 
@@ -454,33 +469,79 @@ Read FEATURE.md and all spec-research.md files. Run all checks and report PASS o
 
 ## Step 11: Commit Research Artifacts
 
-### Stage and commit all research artifacts
+Stage specific files and commit:
 
 ```bash
-git add features/{domain}/{feature}/
-git commit -m "research({feature}): add FEATURE.md and spec-research for {N} specs"
+git add features/{domain}/{feature}/FEATURE.md
+git add features/{domain}/{feature}/specs/*/spec-research.md
+git commit -m "$(cat <<'EOF'
+research({feature}): add FEATURE.md and spec-research for {N} specs
+
+Co-Authored-By: Claude Opus 4.5 <noreply@anthropic.com>
+EOF
+)"
 ```
+
+**Important:** Stage specific files, not `git add -A`.
 
 ---
 
-## Step 12: Completion
+## Step 12: Create Tasks and Handoff
 
-Confirm with user:
+### Create Spec Tasks
 
+After research is committed, create Tasks for parallel spec execution:
+
+For each spec in the decomposition table:
+1. Use TaskCreate with subject "Spec + Implement {NN}-{name}"
+2. Include spec path and description
+3. Map Blocked By column to blockedBy parameter
+
+Example:
 ```
-"Research complete.
+TaskCreate:
+  subject: "Spec + Implement 01-foundation"
+  description: "Run spec and implement skills for features/{domain}/{feature}/specs/01-foundation"
 
-Created:
-- FEATURE.md at features/{domain}/{feature}/FEATURE.md
-- spec-research.md for all {N} decomposed specs
+TaskCreate:
+  subject: "Spec + Implement 02-data-layer"
+  description: "Run spec and implement skills for features/{domain}/{feature}/specs/02-data-layer"
+  blockedBy: [task-id-of-01]
 
-Decomposition:
-1. 01-{spec-1} - [description]
-2. 02-{spec-2} - [description]
-3. 03-{spec-3} - [description]
-...
+TaskCreate:
+  subject: "Spec + Implement 03-ui"
+  description: "Run spec and implement skills for features/{domain}/{feature}/specs/03-ui"
+  blockedBy: [task-id-of-01, task-id-of-02]
+```
 
-Next step: Run `spec` skill for 01-{spec-1}"
+Report to user:
+- Task IDs created
+- Dependency graph visualization
+- Which tasks are immediately actionable (no blockers)
+- **Handoff instruction:** Run `/orchestrate` in a fresh session
+
+Example output:
+```
+"Created {N} spec tasks with dependencies:
+
+Task IDs:
+- #1: Spec + Implement 01-foundation (no blockers - ready)
+- #2: Spec + Implement 02-data-layer (blocked by: #1)
+- #3: Spec + Implement 03-ui (blocked by: #1, #2)
+
+Dependency Graph:
+01-foundation
+    ├── 02-data-layer
+    │       └── 03-ui
+    └── 03-ui
+
+Ready to execute: 01-foundation
+
+NEXT STEP:
+Start a fresh session and run:
+  /orchestrate features/{domain}/{feature}
+
+This will spawn spec-executor agents for all unblocked specs."
 ```
 
 ---
@@ -492,5 +553,7 @@ Next step: Run `spec` skill for 01-{spec-1}"
 - **Document decisions** - Capture rationale, not just conclusions
 - **Test plan from contracts** - Derive tests from interface definitions
 - **Decompose thoughtfully** - Right-sized specs enable parallel work
+- **Track dependencies** - Blocks/Blocked By enables parallel execution
 - **FEATURE.md is the north star** - It shows intended final state
 - **spec-research.md is per-spec** - Each spec gets focused context
+- **Clean handoff** - Committed artifacts before creating Tasks

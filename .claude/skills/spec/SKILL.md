@@ -49,10 +49,10 @@ Assemble Full Spec
        ▼
 Coherence Check (spec-coherence-checker)
        │
-       ├─ FAIL → Fix inconsistencies
+       ├─ FAIL (2x) → ESCALATE (Andon)
        │
        ▼
-Single Review (user reviews complete document)
+Autonomous Validation (or Human Review if interactive)
        │
        ▼
 Generate Checklist
@@ -263,20 +263,58 @@ Check that FR references, type names, and scope are consistent across all sectio
 3. Re-run the coherence checker
 4. Repeat until PASS (max 2 iterations)
 
-**If stuck after 2 iterations:** Escalate to user - there may be a fundamental issue with how sections were drafted.
+**If stuck after 2 iterations:** Proceed to Step 7 (Autonomous Validation) which handles Andon escalation. Do not escalate separately here.
 
 ---
 
-## Step 7: Single Review
+## Step 7: Autonomous Validation (or Human Review)
 
-Present the complete spec.md to the user for review:
+### Autonomous Mode (Default for Sub-Agent Execution)
+
+When running as a sub-agent (dispatched by spec-executor), skip human review if ALL conditions pass:
+
+**Auto-Approve Criteria:**
+- [ ] spec-coherence-checker: PASS
+- [ ] No ⚠️ TBD items remain from spec-research.md
+- [ ] All interface contracts have traced sources
+- [ ] Out of Scope items are all classified (no ⚠️ Unassigned)
+
+If all criteria pass → Proceed directly to Step 8 (Generate Checklist)
+
+### Human Review Mode (Interactive Execution)
+
+When running interactively (user invoked /spec directly):
 
 1. **Show full document** - Display the assembled spec.md
 2. **Collect feedback** - User reviews entire document at once
 3. **Iterate if needed** - Make changes based on consolidated feedback
 4. **Finalize** - Once user approves, proceed to checklist generation
 
-**Note:** All clarifications were gathered upfront (Step 3). This review is for final approval, not discovery.
+### Andon Escalation
+
+If autonomous validation fails, ESCALATE - do not proceed:
+
+```
+SPEC BLOCKED
+
+Validation failure: [which check failed]
+Details: [specific issue]
+
+Impact: Cannot proceed to implementation without resolution.
+
+Options:
+1. Return to research phase to update contracts
+2. Clarify with user: [specific question]
+3. Proceed with assumption: [state assumption explicitly]
+
+Need decision to proceed.
+```
+
+**Escalation Triggers:**
+- spec-coherence-checker fails 2+ iterations
+- Discovered gap in research interface contracts
+- ⚠️ TBD items that cannot be resolved from available context
+- Scope ambiguity that contracts don't address
 
 ---
 
@@ -380,14 +418,21 @@ rm -rf {spec-path}/tmp
    | {YYYY-MM-DD} | [{NN}-{spec-name}](specs/{NN}-{spec-name}/spec.md) | {description} |
    ```
 
-### Commit Spec Artifacts
+### Stage and Commit Spec Artifacts
 
 ```bash
 git add features/{domain}/{feature}/specs/{NN}-{spec-name}/spec.md
 git add features/{domain}/{feature}/specs/{NN}-{spec-name}/checklist.md
 git add features/{domain}/{feature}/FEATURE.md
-git commit -m "spec({NN}-{spec-name}): add spec and checklist"
+git commit -m "$(cat <<'EOF'
+spec({NN}-{spec-name}): add spec and checklist
+
+Co-Authored-By: Claude Opus 4.5 <noreply@anthropic.com>
+EOF
+)"
 ```
+
+**Important:** Stage specific files, not `git add -A`.
 
 ---
 
@@ -414,5 +459,7 @@ Next step: Run `implement` skill to build it"
 - **spec-research.md already exists** - Created by research skill
 - **Test plan from contracts** - Derive tests from interface definitions
 - **Parallel for speed** - 4 agents draft simultaneously
-- **Single review for efficiency** - User reviews complete document once
+- **Single review for efficiency** - User reviews complete document once (interactive mode)
 - **Checklist enables execution** - Clear tasks for implement phase
+- **Autonomous when possible** - Skip human review if QC passes and contracts are clear
+- **Escalate on exception** - Andon pattern for genuine blockers, not minor issues

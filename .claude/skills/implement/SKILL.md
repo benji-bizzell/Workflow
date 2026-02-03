@@ -138,6 +138,36 @@ Use these as the source of truth for implementation.
 
 ---
 
+## Stage 1.5: FR Dependency Analysis (for Parallel Execution)
+
+When running as spec-executor (orchestrating sub-agents), analyze FR dependencies before execution.
+
+### Identify FR Dependencies
+
+Read spec-research.md Test Plan section. For each FR, determine:
+- Does this FR's implementation depend on types/functions from another FR?
+- Does this FR's test require mocks that another FR provides?
+
+### Build FR Dependency Graph
+
+| FR | Depends On | Can Parallel With |
+|----|------------|-------------------|
+| FR1 | - | FR3 |
+| FR2 | FR1 | - |
+| FR3 | - | FR1 |
+
+### Execution Waves
+
+Group FRs into waves based on dependencies:
+
+**Wave 1:** FRs with no dependencies (FR1, FR3)
+**Wave 2:** FRs depending only on Wave 1 (FR2)
+**Wave 3:** FRs depending on Wave 2 (...)
+
+This wave structure drives parallel sub-agent dispatch.
+
+---
+
 ## Stage 2: Determine Phase
 
 Check checklist.md status:
@@ -166,12 +196,46 @@ Check checklist.md status:
 - Focus on behavior, not implementation
 - Include edge cases from spec
 
+### Parallel Execution (Spec-Executor Mode)
+
+When orchestrating via spec-executor, dispatch FR test work in parallel:
+
+**Wave-Based Dispatch:**
+
+1. **Wave 1** - Launch parallel sub-agents for independent FRs:
+   ```
+   Task(subagent_type="general-purpose",
+        description="FR1 tests",
+        prompt="Write tests for FR1 per spec. File: {test-file}")
+
+   Task(subagent_type="general-purpose",
+        description="FR3 tests",
+        prompt="Write tests for FR3 per spec. File: {test-file}")
+   ```
+
+2. **Wait** for Wave 1 completion
+
+3. **Wave 2** - Launch sub-agents for newly unblocked FRs:
+   ```
+   Task(subagent_type="general-purpose",
+        description="FR2 tests",
+        prompt="Write tests for FR2 per spec. FR1 types now available.")
+   ```
+
+4. **Continue** until all FR tests complete
+
+5. **Run red-phase-test-validator** on combined test output
+
 ### Commits (Phase X.0):
 
+One commit per FR test group. Use the standard commit format (see Commit Discipline section):
+
 ```bash
-git commit -m "test(FR1): add input validation tests"
-git commit -m "test(FR1): add edge case coverage"
+git add {test-file-path}
+git commit -m "test(FR1): add input validation tests ..."  # HEREDOC format with Co-Author-By
 ```
+
+Stage only test files, not implementation files.
 
 ### Phase X.0 Completion:
 
@@ -231,17 +295,31 @@ Report PASS or FAIL with specific issues."
 
 ### Implementation Guidelines:
 
-- Follow patterns from research.md
+- Follow patterns from spec-research.md
 - Reference files listed in Technical Design
 - Keep changes minimal and focused
 - Target 50-150 lines per FR (200 max)
 
+### Parallel Execution (Spec-Executor Mode)
+
+Same wave-based pattern as Phase X.0:
+
+1. Dispatch Wave 1 implementation sub-agents in parallel
+2. Wait for completion
+3. Dispatch Wave 2 (now unblocked)
+4. Continue until all FRs implemented
+5. Run full test suite to verify integration
+
 ### Commits (Phase X.1):
 
+One commit per FR implementation. Use the standard commit format (see Commit Discipline section):
+
 ```bash
-git commit -m "feat(FR1): implement validation logic"
-git commit -m "feat(FR1): handle edge cases"
+git add {implementation-file-path}
+git commit -m "feat(FR1): implement validation logic ..."  # HEREDOC format with Co-Author-By
 ```
+
+Stage only implementation files, NOT test files (they were committed in X.0).
 
 ### Phase X.1 Completion:
 
@@ -359,15 +437,78 @@ Optimize any weak tests found."
 
 ## Stage 3: Completion
 
-After review complete, confirm with user:
+After review complete, update documentation and finalize.
+
+### 3.1: Verify Checklist Complete
+
+Read `{spec-path}/checklist.md` and verify all tasks marked `[x]`:
+- [ ] All Phase X.0 tasks complete
+- [ ] All Phase X.1 tasks complete
+- [ ] All Phase X.2 tasks complete
+
+If any tasks unmarked, update them now.
+
+### 3.2: Add Session Notes
+
+Append to checklist.md:
+
+```markdown
+## Session Notes
+
+**{date}**: Implementation complete.
+- Phase X.0: {N} test commits
+- Phase X.1: {N} implementation commits
+- Phase X.2: Review passed, {N} fix commits (if any)
+- All tests passing.
+```
+
+### 3.3: Update FEATURE.md
+
+Read `features/{domain}/{feature}/FEATURE.md` and update:
+
+1. **Changelog section** - Update spec entry:
+   ```markdown
+   ### {NN}-{spec-name}
+   - **Status**: Complete
+   - **Date**: {date}
+   - **Commits**: test(FR1-N), feat(FR1-N), fix (if any)
+   ```
+
+2. **Files Touched section** - Add any new files created
+
+### 3.4: Commit Documentation Updates
+
+```bash
+git add {spec-path}/checklist.md features/{domain}/{feature}/FEATURE.md
+git commit -m "$(cat <<'EOF'
+docs({NN}-{spec-name}): update checklist and FEATURE.md
+
+- Mark all checklist tasks complete
+- Add session notes
+- Update FEATURE.md changelog
+
+Co-Authored-By: Claude Opus 4.5 <noreply@anthropic.com>
+EOF
+)"
+git status  # Verify clean working tree
+```
+
+### 3.5: Confirm with User
 
 ```
 "Implementation complete for {NN}-{spec-name}.
 
-Commits:
+Commits (in TDD order):
 1. test(FR1-N): tests for all FRs
 2. feat(FR1-N): implementations for all FRs
 3. fix({spec}): review fixes (if any)
+4. docs({spec}): documentation updates
+
+Documentation Updated:
+  ✓ checklist.md - all tasks marked complete, session notes added
+  ✓ FEATURE.md - changelog updated
+
+All tests passing. Git state clean.
 
 Next step: Proceed to next spec using `spec` then `implement` skills"
 ```
@@ -405,9 +546,31 @@ Each spec follows this commit sequence:
 | 2 | `test` | X.0 | Test commits (red phase) | implement skill |
 | 3 | `feat` | X.1 | Implementation commits (green phase) | implement skill |
 | 4 | `fix` | X.2 | Review fix commits (if needed) | implement skill |
-| 5 | `refactor` | any | Cleanup commits (if needed) | implement skill |
+| 5 | `docs` | Completion | Documentation updates | implement skill |
 
 **Note:** The `spec()` commit is created by the spec skill before implement runs.
+
+### Commit Format (REQUIRED)
+
+Always use HEREDOC format with Co-Author-By:
+
+```bash
+git add {specific-files}  # Never use git add -A
+git commit -m "$(cat <<'EOF'
+{prefix}({scope}): {concise description}
+
+Co-Authored-By: Claude Opus 4.5 <noreply@anthropic.com>
+EOF
+)"
+git status  # Verify commit succeeded
+```
+
+### Anti-Patterns
+
+- **NEVER** bundle tests and implementation in one commit
+- **NEVER** use `git add -A` or `git add .` - stage specific files
+- **NEVER** skip `git status` verification after commit
+- **NEVER** commit implementation before tests (breaks TDD visibility)
 
 ---
 
@@ -416,5 +579,9 @@ Each spec follows this commit sequence:
 - **Tests Before Implementation**: Always write tests before code
 - **Small Commits**: One logical change per commit, reference FR number
 - **Review Before Merge**: Phase X.2 catches issues early
-- **Commit Discipline**: `test(FR{N})` → `feat(FR{N})` → `fix({spec})` sequence
+- **Commit Discipline**: Follow the sequence in Commit Discipline section
 - **Checklist Discipline**: Update immediately after completing each item
+- **Documentation Current**: Update checklist and FEATURE.md before completion
+- **Parallelize independent FRs** - Use sub-agents for FRs with no dependencies
+- **Wave-based execution** - Group FRs by dependency depth, execute waves in parallel
+- **Integration verification** - Always run full test suite after parallel implementation
